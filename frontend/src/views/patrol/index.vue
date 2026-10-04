@@ -46,8 +46,20 @@
           <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
           <td>{{ row.status }}</td>
           <td class="row-actions">
+            <template v-if="row['来源审批单']">
+              <button
+                v-if="row['核查状态'] !== '核查通过'"
+                class="link"
+                type="button"
+                @click="runAction('核查通过', row)"
+              >
+                核查通过
+              </button>
+              <span v-else class="muted-text">已核查</span>
+            </template>
             <button
               v-for="action in actions"
+              v-else
               :key="action"
               class="link"
               type="button"
@@ -67,11 +79,13 @@
       <span>共 {{ total }} 条巡护任务记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <PatrolCheckList />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import {
   downloadEntries,
@@ -79,6 +93,8 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import { chainEventName } from '@/domain/workflow'
+import PatrolCheckList from '@/components/PatrolCheckList.vue'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('patrol')
@@ -133,5 +149,16 @@ function reload() {
   }
 }
 
-onMounted(reload)
+onMounted(() => {
+  reload()
+  window.addEventListener(chainEventName(), reload)
+})
+onBeforeUnmount(() => window.removeEventListener(chainEventName(), reload))
 </script>
+
+<style scoped>
+.muted-text {
+  color: var(--muted);
+  font-size: 12px;
+}
+</style>

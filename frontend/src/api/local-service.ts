@@ -1,5 +1,6 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import { runPermitAction, verifyCheckpoint, verifyPatrol } from '@/domain/workflow'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
@@ -29,15 +30,26 @@ export function listEntries(key: string, filters: Record<string, string> = {}): 
 }
 
 export function runAction(key: string, id: number, action: string): ActionResult {
-  const meta = moduleMeta(key)
-  const target = meta.actionTargets[action]
-  if (!target) {
-    return { ok: false, message: `${meta.entity}没有登记「${action}」这个动作` }
+  // 用火审批走独立的分级权限状态机：越权、重复批准、只读都在领域层拦截。
+  if (key === 'burnpermit') {
+    return runPermitAction(id, action)
   }
+  const meta = moduleMeta(key)
   const rows = listRows(key)
   const index = rows.findIndex((row) => Number(row.id) === id)
   if (index < 0) {
     return { ok: false, message: `没有找到编号为 ${id} 的${meta.entity}` }
+  }
+  // 审批链路下发的检查站/巡护核查记录只走核查动作，通用流转在这里挡住。
+  if (rows[index]['来源审批单']) {
+    if (action === '核查通过' || action === '确认核查') {
+      return key === 'checkpoint' ? verifyCheckpoint(id) : verifyPatrol(id)
+    }
+    return { ok: false, message: '该记录是用火审批下发的执行核查，仅可执行「核查通过」' }
+  }
+  const target = meta.actionTargets[action]
+  if (!target) {
+    return { ok: false, message: `${meta.entity}没有登记「${action}」这个动作` }
   }
   const current = String(rows[index].status)
   if (current === target) {
